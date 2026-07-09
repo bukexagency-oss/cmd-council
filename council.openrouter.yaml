@@ -1,0 +1,102 @@
+# ============================================================
+# cmd-council — VARIAN UPSTREAM: OPENROUTER
+# ============================================================
+# Pakai file ini saat gateway melayani KLIEN BERBAYAR (Model C2).
+# OpenRouter mengizinkan resale eksplisit (ToS 6 Jul 2026: "your
+# customers (to the extent you incorporate the Service into your
+# own products and services)") — tanpa perlu surat izin.
+#
+#   council serve  --config council.openrouter.yaml
+#   council ask    --config council.openrouter.yaml "..."
+#
+# Semua ID model & harga di bawah DIVERIFIKASI langsung dari
+# GET https://openrouter.ai/api/v1/models (8 Jul 2026).
+# Pipeline, license gateway, dan budget guard tidak berubah.
+# ============================================================
+
+provider:
+  base_url: https://openrouter.ai/api/v1
+  api_key: ${OPENROUTER_API_KEY}
+  zdr: false                # header x-cmd-zdr khusus Command Code; biarkan false
+
+default_mode: standard
+
+modes:
+  # Komposisi reasoning IDENTIK dengan council.yaml — hanya ID
+  # yang memakai namespace vendor OpenRouter.
+  standard:
+    advisors:
+      - { model: deepseek/deepseek-v4-pro,            protocol: openai }
+      - { model: qwen/qwen3.7-max,                    protocol: openai }
+      - { model: nvidia/nemotron-3-ultra-550b-a55b,   protocol: openai }
+      - { model: z-ai/glm-5.2,                        protocol: openai }
+    chairman: { model: anthropic/claude-sonnet-5, protocol: openai }
+    review: true
+
+  eco:
+    advisors:
+      - { model: deepseek/deepseek-v4-pro, protocol: openai }
+      - { model: z-ai/glm-5.2,             protocol: openai }
+      - { model: qwen/qwen3.7-max,         protocol: openai }
+    chairman: { model: anthropic/claude-haiku-4.5, protocol: openai }
+    review: false
+
+  max:
+    advisors:
+      - { model: anthropic/claude-sonnet-5,          protocol: openai }
+      - { model: openai/gpt-5.4,                     protocol: openai }
+      - { model: nvidia/nemotron-3-ultra-550b-a55b,  protocol: openai }
+      - { model: deepseek/deepseek-v4-pro,           protocol: openai }
+    chairman: { model: anthropic/claude-sonnet-5, protocol: openai }
+    review: true
+
+# Mode passthrough satu model di facade /v1 — untuk chat persona
+# sehari-hari (~$0.0001–0.0005/pertukaran). Council (2N+1 panggilan)
+# disimpan untuk momen /council: kasus sulit, review, keputusan penting.
+passthrough:
+  chat:     { model: deepseek/deepseek-v4-pro, protocol: openai }   # kualitas harian
+  chat-eco: { model: deepseek/deepseek-v4-flash, protocol: openai }   # termurah, drill/latihan
+
+limits:
+  max_output_tokens: { stage1: 900, stage2: 800, stage3: 1500 }
+  timeout_seconds: 120
+  retries: 1
+  quorum: 2
+  max_concurrency: 6
+
+budget:
+  # OpenRouter TIDAK punya rolling window 5h/7d — angka di bawah adalah
+  # REM INTERNAL milikmu (wajib di C2: kamu yang bayar per token, jadi
+  # gateway harus punya circuit breaker sendiri). Sesuaikan monthly_credits
+  # dengan anggaran top-up bulananmu.
+  monthly_credits: 30.0
+  window_5h: 9.0            # rem darurat: max 30% anggaran per 5 jam
+  window_7d: 18.0           # rem darurat: max 60% anggaran per 7 hari
+  soft_stop_pct: 80
+  hard_stop_pct: 95
+
+utility:
+  ranking_fallback_parser: { model: google/gemini-3.1-flash-lite, protocol: openai }
+
+# Harga resmi dari GET /models OpenRouter, 8 Jul 2026 ($ per 1M token).
+# get_models() akan menimpa ini dengan harga live saat server jalan.
+pricing_fallback:
+  anthropic/claude-sonnet-5:            { input: 2.00, output: 10.00 }
+  anthropic/claude-haiku-4.5:           { input: 1.00, output: 5.00 }
+  openai/gpt-5.5:                       { input: 5.00, output: 30.00 }
+  openai/gpt-5.4:                       { input: 2.50, output: 15.00 }
+  openai/gpt-5.4-mini:                  { input: 0.75, output: 4.50 }
+  google/gemini-3.5-flash:              { input: 1.50, output: 9.00 }
+  google/gemini-3.1-flash-lite:         { input: 0.25, output: 1.50 }
+  deepseek/deepseek-v4-flash:           { input: 0.09, output: 0.18 }
+  deepseek/deepseek-v4-pro:             { input: 0.435, output: 0.87 }
+  z-ai/glm-5.2:                         { input: 0.93, output: 3.00 }
+  qwen/qwen3.7-max:                     { input: 1.25, output: 3.75 }
+  nvidia/nemotron-3-ultra-550b-a55b:    { input: 0.50, output: 2.20 }
+
+# Tidak ada program "Deals"/multiplier di OpenRouter — 1 kredit = 1 dolar.
+credit_multipliers: {}
+
+storage:
+  data_dir: data/conversations
+  ledger: data/ledger.jsonl

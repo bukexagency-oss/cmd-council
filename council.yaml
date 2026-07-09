@@ -1,0 +1,102 @@
+# ============================================================
+# cmd-council configuration
+# ============================================================
+# Model IDs below are PLACEHOLDERS based on Command Code's public
+# catalog (July 2026). After setting CMD_API_KEY, run:
+#     council models
+# and align these IDs with the live catalog (PRD Phase 0) before
+# real use. `council validate` checks this for you.
+# ============================================================
+
+provider:
+  base_url: https://api.commandcode.ai/provider/v1
+  api_key: ${CMD_API_KEY}
+  zdr: false               # true -> send "x-cmd-zdr: 1" (Zero Data Retention)
+
+default_mode: standard
+
+modes:
+  # Reasoning-focused default: 4 cross-lab OSS reasoning flagships
+  # (DeepSeek/Alibaba/NVIDIA/Zhipu) + premium chairman as the judge.
+  standard:
+    advisors:
+      - { model: deepseek-v4-pro,  protocol: openai }
+      - { model: qwen-3.7-max,     protocol: openai }
+      - { model: nemotron-3-ultra, protocol: openai }
+      - { model: glm-5.2,          protocol: openai }
+    chairman: { model: claude-sonnet-5, protocol: anthropic }
+    review: true
+
+  # Eco: skips anonymized peer review (stage 2) -> N+1 calls per session.
+  eco:
+    advisors:
+      - { model: deepseek-v4-pro, protocol: openai }
+      - { model: glm-5.2,         protocol: openai }
+      - { model: qwen-3.7-max,    protocol: openai }
+    chairman: { model: claude-haiku-4.5, protocol: anthropic }
+    review: false
+
+  # Max: premium panel for high-stakes questions.
+  max:
+    advisors:
+      - { model: claude-sonnet-5,  protocol: anthropic }
+      - { model: gpt-5.4,          protocol: openai }
+      - { model: nemotron-3-ultra, protocol: openai }
+      - { model: deepseek-v4-pro,  protocol: openai }
+    chairman: { model: claude-sonnet-5, protocol: anthropic }
+    review: true
+
+# Mode passthrough satu model di facade /v1 — untuk chat persona
+# sehari-hari (~$0.0001–0.0005/pertukaran). Council (2N+1 panggilan)
+# disimpan untuk momen /council: kasus sulit, review, keputusan penting.
+passthrough:
+  chat:     { model: deepseek-v4-pro, protocol: openai }   # kualitas harian
+  chat-eco: { model: deepseek-v4-flash, protocol: openai }   # termurah, drill/latihan
+
+limits:
+  max_output_tokens: { stage1: 900, stage2: 800, stage3: 1500 }
+  timeout_seconds: 120
+  retries: 1               # extra attempts on 429/5xx/network errors
+  quorum: 2                # minimum successful advisors to proceed
+  max_concurrency: 6       # simultaneous provider calls (semaphore)
+
+budget:
+  monthly_credits: 30.0    # Pro plan: $15 -> $30 credits/month
+  window_5h: 9.0           # rolling 5-hour cap  (30% of monthly quota)
+  window_7d: 18.0          # rolling 7-day cap   (60% of monthly quota)
+  soft_stop_pct: 80        # warn + auto-downgrade above this
+  hard_stop_pct: 95        # refuse new sessions above this (unless force)
+
+utility:
+  # Cheap model used only to rescue unparseable FINAL RANKING blocks.
+  ranking_fallback_parser: { model: gemini-3.1-flash-lite, protocol: openai }
+
+# Static price fallback ($ per 1M tokens) used until GET /models provides
+# live prices. Verified entries from commandcode.ai (Jul 2026); OSS flagship
+# entries are estimates (PRD assumption A2 — verify in Phase 0).
+pricing_fallback:
+  claude-sonnet-5:       { input: 2.00, output: 10.00 }
+  claude-haiku-4.5:      { input: 1.00, output: 5.00 }
+  gpt-5.5:               { input: 5.00, output: 30.00 }
+  gpt-5.4:               { input: 2.50, output: 15.00 }
+  gpt-5.4-mini:          { input: 0.75, output: 4.50 }
+  gpt-5.3-codex:         { input: 2.00, output: 8.00 }
+  gemini-3.5-flash:      { input: 1.50, output: 9.00 }
+  gemini-3.1-flash-lite: { input: 0.25, output: 1.50 }
+  deepseek-v4-flash:     { input: 0.14, output: 0.28 }
+  deepseek-v4-pro:       { input: 0.60, output: 2.20 }   # estimate
+  glm-5.2:               { input: 0.60, output: 2.20 }   # estimate
+  kimi-k2.7:             { input: 0.60, output: 2.20 }   # estimate
+  qwen-3.7-max:          { input: 0.60, output: 2.20 }   # estimate
+  minimax-m3:            { input: 0.60, output: 2.20 }   # estimate
+  nemotron-3-ultra:      { input: 0.60, output: 2.20 }   # estimate
+
+# Permanent "Deals" (credits go N x further). Revocable per ToS — treated
+# as estimates only; cost accounting divides by this factor.
+credit_multipliers:
+  deepseek-v4-pro: 4.0
+  minimax-m3: 2.7
+
+storage:
+  data_dir: data/conversations
+  ledger: data/ledger.jsonl
